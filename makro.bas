@@ -2,21 +2,46 @@ Attribute VB_Name = "Module1"
 Option Explicit
 
 ' ============================================================================
-' DATA.xlsx dagi har bir fuqaro (PINFL bo'yicha guruhlangan) uchun
-' FORM.xlsx shabloni asosida alohida xlsx fayl yaratadi.
+' DATA.xlsx dagi har bir soliq to'lovchi (СТИР bo'yicha guruhlangan) uchun
+' FORM.xlsx (Aylanma varaqa) shabloni asosida alohida xlsx fayl yaratadi.
+'
+' DATA.xlsx ustunlari (3-qatordan boshlab):
+'   A - Хужжат рақами
+'   B - Хужжат санаси
+'   C - СТИР            <-- guruhlash shu ustun bo'yicha
+'   D - Кадастр коди
+'   E - Корхона номи
+'   F - Ортиқча сумма
+'   G - Қайтарилаётган сумма
+'   H - солиқ коди
+'
+' FORM.xlsx (Aylanma varaqa) shablonida 14-qatordan boshlab yoziladigan
+' ustunlar:
+'   A - Т/р (tartib raqami, 1,2,3...)
+'   B - Хужжат рақами
+'   C - Хужжат санаси
+'   D - СТИР
+'   E - Кадастр коди
+'   F - Корхона номи
+'   G - солиқ коди
+'   H - солиқ суммаси (Ортиқча сумма)
+'   I - Қайтарилаётган сумма
+'   J - Изоҳ (shablondagi tayyor matn/formula - tegilmaydi, faqat nusxa
+'       ko'chiriladi)
 '
 ' ISHLATISH:
-'	Oldindan bo'sh xlsx fayli ochib, kodlar shu yangi ochilgan fayl oynasiga yoziladi
-'	 va shu yerda ishga tushiriladi
+'   Oldindan bo'sh xlsx fayli ochib, kodlar shu yangi ochilgan fayl oynasiga
+'   yoziladi va shu yerda ishga tushiriladi.
 '
-'   Excel 2013: Developer > Visual Basic > Insert > Module > shu kodni joylashtiring
-'               (yoki File > Import File orqali .bas faylni to'g'ridan-to'g'ri import qiling)
+'   Excel 2013: Developer > Visual Basic > Insert > Module > shu kodni
+'               joylashtiring (yoki File > Import File orqali .bas faylni
+'               to'g'ridan-to'g'ri import qiling)
 '   LibreOffice Calc: Tools > Macros > Edit Macros > shu kodni joylashtiring
 '
 ' Kod ishga tushganda: avval DATA.xlsx, keyin FORM.xlsx faylini tanlaysiz,
 ' so'ng natijalar saqlanadigan papkani ko'rsatasiz.
 '
-' elmurod vokhidov 
+' elmurod vokhidov
 ' ============================================================================
 
 Sub Shablonlarni_Avtomatik_Yaratish()
@@ -33,20 +58,32 @@ Sub Shablonlarni_Avtomatik_Yaratish()
 
     Dim lastRow As Long, r As Long, i As Long, j As Long, k As Long
 
-    Dim arrPinfl() As String
+    Dim arrHujjatRaqami() As String
+    Dim arrHujjatSanasi() As Variant
+    Dim arrStir() As String
     Dim arrKadastr() As String
-    Dim arrFuqaro() As String
+    Dim arrKorxona() As String
     Dim arrOrtiqcha() As Double
-    Dim arrSumma() As Double
-    Dim arrSoliq() As Variant
+    Dim arrQaytariladigan() As Double
+    Dim arrSoliqKodi() As Variant
     Dim n As Long
 
-    Dim uniquePinfl() As String
+    Dim uniqueStir() As String
     Dim memberOf() As Long
     Dim groupCount As Long
+    Dim foundGroup As Long
+    Dim g As Long
+
+    Dim members() As Long
+    Dim memberCount As Long
+    Dim extra As Long, insertAt As Long
 
     Dim fileName As String
     Dim fullPath As String
+
+    Const DATA_START_ROW As Long = 3 ' DATA.xlsx da malumotlar 3-qatordan boshlanadi
+    Const ROW_BASE As Long = 14      ' shablonda malumot yoziladigan birinchi qator
+    Const TEMPLATE_ROWS As Long = 2  ' shablonda tayyor holda 14 va 15-qatorlar bor
 
     On Error GoTo XatoYuz
 
@@ -70,9 +107,9 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     End If
 
     ' --- 3. Natijalar papkasini tanlash ---
-    ' Eslatma: agar FileDialog papka tanlash oynasi ochilmasa (ba'zi LibreOffice
-    ' versiyalarida bo'lishi mumkin), pastdagi qatorni izohdan chiqarib,
-    ' papka yo'lini qo'lda yozib qo'yishingiz mumkin:
+    ' Eslatma: agar FileDialog papka tanlash oynasi ochilmasa (ba'zi
+    ' LibreOffice versiyalarida bo'lishi mumkin), pastdagi qatorni izohdan
+    ' chiqarib, papka yo'lini qo'lda yozib qo'yishingiz mumkin:
     ' outputFolder = "C:\Natijalar"
 
     With Application.FileDialog(4) ' 4 = msoFileDialogFolderPicker
@@ -88,59 +125,61 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     Set wbSource = Workbooks.Open(sourceFile)
     Set wsSource = wbSource.Worksheets(1)
 
-    lastRow = wsSource.Cells(wsSource.Rows.Count, "B").End(-4162).Row ' -4162 = xlUp
+    lastRow = wsSource.Cells(wsSource.Rows.Count, "A").End(-4162).Row ' -4162 = xlUp
 
     n = 0
-    ReDim arrPinfl(1 To lastRow)
+    ReDim arrHujjatRaqami(1 To lastRow)
+    ReDim arrHujjatSanasi(1 To lastRow)
+    ReDim arrStir(1 To lastRow)
     ReDim arrKadastr(1 To lastRow)
-    ReDim arrFuqaro(1 To lastRow)
+    ReDim arrKorxona(1 To lastRow)
     ReDim arrOrtiqcha(1 To lastRow)
-    ReDim arrSumma(1 To lastRow)
-    ReDim arrSoliq(1 To lastRow)
+    ReDim arrQaytariladigan(1 To lastRow)
+    ReDim arrSoliqKodi(1 To lastRow)
 
-    Dim pinfl As String, fuqaro As String
+    Dim hujjatRaqami As String, stir As String
 
-    ' 1-qator sarlavha (Hujjat sanasi, PINFL, Kadastr, Fuqaro, Ortiqcha to'lov, Summa, Soliq kodi)
-    ' Ma'lumot 2-qatordan boshlanadi
-    For r = 2 To lastRow
-        pinfl = Trim(CStr(wsSource.Cells(r, "B").Value))
-        fuqaro = Trim(CStr(wsSource.Cells(r, "D").Value))
+    ' DATA.xlsx: 1-2 qator sarlavha, ma'lumot 3-qatordan boshlanadi
+    For r = DATA_START_ROW To lastRow
+        hujjatRaqami = Trim(CStr(wsSource.Cells(r, "A").Value))
+        stir = Trim(CStr(wsSource.Cells(r, "C").Value))
 
-        If pinfl <> "" Or fuqaro <> "" Then
+        If hujjatRaqami <> "" Or stir <> "" Then
             n = n + 1
-            arrPinfl(n) = pinfl
-            arrKadastr(n) = Trim(CStr(wsSource.Cells(r, "C").Value))
-            arrFuqaro(n) = fuqaro
-            arrOrtiqcha(n) = SonniAjrat(wsSource.Cells(r, "E").Value)
-            arrSumma(n) = SonniAjrat(wsSource.Cells(r, "F").Value)
-            arrSoliq(n) = wsSource.Cells(r, "G").Value
+            arrHujjatRaqami(n) = hujjatRaqami
+            arrHujjatSanasi(n) = wsSource.Cells(r, "B").Value
+            arrStir(n) = stir
+            arrKadastr(n) = Trim(CStr(wsSource.Cells(r, "D").Value))
+            arrKorxona(n) = Trim(CStr(wsSource.Cells(r, "E").Value))
+            arrOrtiqcha(n) = SonniAjrat(wsSource.Cells(r, "F").Value)
+            arrQaytariladigan(n) = SonniAjrat(wsSource.Cells(r, "G").Value)
+            arrSoliqKodi(n) = wsSource.Cells(r, "H").Value
         End If
     Next r
 
     wbSource.Close SaveChanges:=False
 
     If n = 0 Then
-        MsgBox "Ma'lumotlar topilmadi. B ustunida (PINFL) qiymat bormi tekshiring.", vbExclamation
+        MsgBox "Ma'lumotlar topilmadi. A ustunida (Хужжат рақами) qiymat bormi tekshiring.", vbExclamation
         GoTo Chiqish
     End If
 
-    ' --- 5. PINFL bo'yicha guruhlash (birinchi uchragan tartibda) ---
-    ReDim uniquePinfl(1 To n)
+    ' --- 5. СТИР bo'yicha guruhlash (birinchi uchragan tartibda) ---
+    ReDim uniqueStir(1 To n)
     ReDim memberOf(1 To n)
     groupCount = 0
 
-    Dim foundGroup As Long
     For i = 1 To n
         foundGroup = 0
         For j = 1 To groupCount
-            If uniquePinfl(j) = arrPinfl(i) Then
+            If uniqueStir(j) = arrStir(i) Then
                 foundGroup = j
                 Exit For
             End If
         Next j
         If foundGroup = 0 Then
             groupCount = groupCount + 1
-            uniquePinfl(groupCount) = arrPinfl(i)
+            uniqueStir(groupCount) = arrStir(i)
             foundGroup = groupCount
         End If
         memberOf(i) = foundGroup
@@ -148,13 +187,6 @@ Sub Shablonlarni_Avtomatik_Yaratish()
 
     ' --- 6. Shablon faylini ochish ---
     Set wbTemplate = Workbooks.Open(templateFile)
-
-    Const ROW_BASE As Long = 14      ' shablonda ma'lumot yoziladigan birinchi qator
-    Const TEMPLATE_ROWS As Long = 2  ' shablonda tayyor holda 14 va 15-qatorlar bor
-
-    Dim members() As Long
-    Dim memberCount As Long
-    Dim g As Long
 
     For g = 1 To groupCount
 
@@ -173,14 +205,13 @@ Sub Shablonlarni_Avtomatik_Yaratish()
         Set wsNew = wbNew.Worksheets(1)
 
         If memberCount < TEMPLATE_ROWS Then
-            ' faqat 1 ta yozuv bo'lsa - ortiqcha shablon qatorini o'chirish
+            ' yozuvlar shablondagidan kam bo'lsa - ortiqcha qatorni o'chirish
             For k = 1 To (TEMPLATE_ROWS - memberCount)
                 wsNew.Rows(ROW_BASE + memberCount).Delete
             Next k
 
         ElseIf memberCount > TEMPLATE_ROWS Then
-            ' 2 tadan ko'p yozuv bo'lsa - qo'shimcha qatorlar kiritish
-            Dim extra As Long, insertAt As Long
+            ' yozuvlar shablondagidan ko'p bo'lsa - qo'shimcha qatorlar kiritish
             extra = memberCount - TEMPLATE_ROWS
             insertAt = ROW_BASE + TEMPLATE_ROWS  ' 16-qator
 
@@ -190,9 +221,8 @@ Sub Shablonlarni_Avtomatik_Yaratish()
                 wsNew.Rows(insertAt).PasteSpecial Paste:=-4122 ' -4122 = xlPasteFormats
                 Application.CutCopyMode = False
                 wsNew.Rows(insertAt).RowHeight = wsNew.Rows(ROW_BASE + 1).RowHeight
-                wsNew.Cells(insertAt, "B").Value = wsNew.Cells(ROW_BASE + 1, "B").Value
-                wsNew.Cells(insertAt, "C").Value = wsNew.Cells(ROW_BASE + 1, "C").Value
-                wsNew.Cells(insertAt, "L").Value = wsNew.Cells(ROW_BASE + 1, "L").Value
+                ' "Изоҳ" ustunidagi tayyor matn/formulani ham nusxalab qo'yamiz
+                wsNew.Cells(insertAt, "J").Value = wsNew.Cells(ROW_BASE + 1, "J").Value
                 insertAt = insertAt + 1
             Next k
         End If
@@ -200,23 +230,26 @@ Sub Shablonlarni_Avtomatik_Yaratish()
         ' Ma'lumotlarni shablonga yozish
         For k = 1 To memberCount
             i = members(k)
-            wsNew.Cells(ROW_BASE + k - 1, "D").Value = arrPinfl(i)      ' PINFL
-            wsNew.Cells(ROW_BASE + k - 1, "E").Value = arrKadastr(i)    ' Kadastr raqami
-            wsNew.Cells(ROW_BASE + k - 1, "F").Value = arrFuqaro(i)     ' Fuqaro
-            wsNew.Cells(ROW_BASE + k - 1, "G").Value = arrSoliq(i)      ' Soliq kodi
-            wsNew.Cells(ROW_BASE + k - 1, "H").Value = arrOrtiqcha(i)   ' Ortiqcha to'lov
-            wsNew.Cells(ROW_BASE + k - 1, "K").Value = arrSumma(i)      ' Summa
+            wsNew.Cells(ROW_BASE + k - 1, "A").Value = k                     ' Т/р
+            wsNew.Cells(ROW_BASE + k - 1, "B").Value = arrHujjatRaqami(i)    ' Хужжат рақами
+            wsNew.Cells(ROW_BASE + k - 1, "C").Value = arrHujjatSanasi(i)    ' Хужжат санаси
+            wsNew.Cells(ROW_BASE + k - 1, "D").Value = arrStir(i)            ' СТИР
+            wsNew.Cells(ROW_BASE + k - 1, "E").Value = arrKadastr(i)         ' Кадастр коди
+            wsNew.Cells(ROW_BASE + k - 1, "F").Value = arrKorxona(i)         ' Корхона номи
+            wsNew.Cells(ROW_BASE + k - 1, "G").Value = arrSoliqKodi(i)       ' солиқ коди
+            wsNew.Cells(ROW_BASE + k - 1, "H").Value = arrOrtiqcha(i)        ' солиқ суммаси
+            wsNew.Cells(ROW_BASE + k - 1, "I").Value = arrQaytariladigan(i)  ' Қайтарилаётган сумма
         Next k
 
-        ' --- Fayl nomi: FUQARO-SOLIQKODI (birinchi yozuv asosida) ---
+        ' --- Fayl nomi: КОРХОНА-СТИР (birinchi yozuv asosida) ---
         i = members(1)
-        fileName = arrFuqaro(i) & "-" & CStr(arrSoliq(i))
+        fileName = arrKorxona(i) & "-" & arrStir(i)
         fileName = CleanFileName(fileName)
         If fileName = "" Then fileName = "Soliq_tolovchi_" & g
 
         fullPath = outputFolder & Application.PathSeparator & fileName & ".xlsx"
         If Dir(fullPath) <> "" Then
-            fullPath = outputFolder & Application.PathSeparator & fileName & "_" & arrPinfl(i) & ".xlsx"
+            fullPath = outputFolder & Application.PathSeparator & fileName & "_" & g & ".xlsx"
         End If
 
         wbNew.SaveAs Filename:=fullPath, FileFormat:=51 ' 51 = xlOpenXMLWorkbook (.xlsx)
@@ -230,7 +263,7 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     Application.DisplayAlerts = True
 
     MsgBox "Tayyor!" & vbCrLf & vbCrLf & _
-           groupCount & " ta fuqaro uchun alohida fayl yaratildi." & vbCrLf & _
+           groupCount & " ta soliq to'lovchi uchun alohida fayl yaratildi." & vbCrLf & _
            "Fayllar tanlangan papkaga saqlandi.", vbInformation, "Jarayon tugadi"
 
     Exit Sub
