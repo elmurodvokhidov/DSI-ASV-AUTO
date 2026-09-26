@@ -1,32 +1,29 @@
-Attribute VB_Name = "Module1"
-Option Explicit
-
 ' ============================================================================
-' DATA.xlsx dagi har bir soliq to'lovchi (СТИР bo'yicha guruhlangan) uchun
+' DATA.xlsx dagi har bir soliq to'lovchi (???? bo'yicha guruhlangan) uchun
 ' FORM.xlsx (Aylanma varaqa) shabloni asosida alohida xlsx fayl yaratadi.
 '
 ' DATA.xlsx ustunlari (3-qatordan boshlab):
-'   A - Хужжат рақами
-'   B - Хужжат санаси
-'   C - СТИР            <-- guruhlash shu ustun bo'yicha
-'   D - Кадастр коди
-'   E - Корхона номи
-'   F - Ортиқча сумма
-'   G - Қайтарилаётган сумма
-'   H - солиқ коди
+'   A - ?????? ??????
+'   B - ?????? ??????
+'   C - ????            <-- guruhlash shu ustun bo'yicha
+'   D - ??????? ????
+'   E - ??????? ????
+'   F - ??????? ?????
+'   G - ?????????????? ?????
+'   H - ????? ????
 '
-' FORM.xlsx (Aylanma varaqa) shablonida 14-qatordan boshlab yoziladigan
+' ??????? ??????.xlsx shablonida 14-qatordan boshlab yoziladigan
 ' ustunlar:
-'   A - Т/р (tartib raqami, 1,2,3...)
-'   B - Хужжат рақами
-'   C - Хужжат санаси
-'   D - СТИР
-'   E - Кадастр коди
-'   F - Корхона номи
-'   G - солиқ коди
-'   H - солиқ суммаси (Ортиқча сумма)
-'   I - Қайтарилаётган сумма
-'   J - Изоҳ (shablondagi tayyor matn/formula - tegilmaydi, faqat nusxa
+'   A - ?/? (tartib raqami, 1,2,3...)
+'   B - ?????? ?????? (har biriga -26 qo'shiladi)
+'   C - ?????? ??????
+'   D - ????
+'   E - ??????? ????
+'   F - ??????? ????
+'   G - ????? ????
+'   H - ????? ??????? (??????? ?????)
+'   I - ?????????????? ?????
+'   J - ???? (shablondagi tayyor matn/formula - tegilmaydi, faqat nusxa
 '       ko'chiriladi)
 '
 ' ISHLATISH:
@@ -50,6 +47,7 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     Dim wbTemplate As Workbook
     Dim wbNew As Workbook
     Dim wsSource As Worksheet
+    Dim wsTemplate As Worksheet
     Dim wsNew As Worksheet
 
     Dim sourceFile As Variant
@@ -141,7 +139,7 @@ Sub Shablonlarni_Avtomatik_Yaratish()
 
     ' DATA.xlsx: 1-2 qator sarlavha, ma'lumot 3-qatordan boshlanadi
     For r = DATA_START_ROW To lastRow
-        hujjatRaqami = Trim(CStr(wsSource.Cells(r, "A").Value))
+        hujjatRaqami = HujjatRaqaminiTayyorla(wsSource.Cells(r, "A").Value2)
         stir = Trim(CStr(wsSource.Cells(r, "C").Value))
 
         If hujjatRaqami <> "" Or stir <> "" Then
@@ -151,8 +149,8 @@ Sub Shablonlarni_Avtomatik_Yaratish()
             arrStir(n) = stir
             arrKadastr(n) = Trim(CStr(wsSource.Cells(r, "D").Value))
             arrKorxona(n) = Trim(CStr(wsSource.Cells(r, "E").Value))
-            arrOrtiqcha(n) = SonniAjrat(wsSource.Cells(r, "F").Value)
-            arrQaytariladigan(n) = SonniAjrat(wsSource.Cells(r, "G").Value)
+            arrOrtiqcha(n) = YuqorigaYahlitla(SonniAjrat(wsSource.Cells(r, "F").Value))
+            arrQaytariladigan(n) = YuqorigaYahlitla(SonniAjrat(wsSource.Cells(r, "G").Value))
             arrSoliqKodi(n) = wsSource.Cells(r, "H").Value
         End If
     Next r
@@ -160,11 +158,11 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     wbSource.Close SaveChanges:=False
 
     If n = 0 Then
-        MsgBox "Ma'lumotlar topilmadi. A ustunida (Хужжат рақами) qiymat bormi tekshiring.", vbExclamation
+        MsgBox "No source records were found. Check that column A has document numbers.", vbExclamation
         GoTo Chiqish
     End If
 
-    ' --- 5. СТИР bo'yicha guruhlash (birinchi uchragan tartibda) ---
+    ' --- 5. ???? bo'yicha guruhlash (birinchi uchragan tartibda) ---
     ReDim uniqueStir(1 To n)
     ReDim memberOf(1 To n)
     groupCount = 0
@@ -188,6 +186,18 @@ Sub Shablonlarni_Avtomatik_Yaratish()
     ' --- 6. Shablon faylini ochish ---
     Set wbTemplate = Workbooks.Open(templateFile)
 
+    ' Berilgan shablondagi to'g'ri blank doim "1" nomli varaqda.
+    ' Kirillcha sarlavhani qidirish ishlatilmaydi, shuning uchun kodlash
+    ' sababli ??? belgilaridan xatolik chiqmaydi.
+    On Error Resume Next
+    Set wsTemplate = wbTemplate.Worksheets("1")
+    On Error GoTo XatoYuz
+
+    If wsTemplate Is Nothing Then
+        MsgBox "Template sheet named '1' was not found. Please select the original Aylanma varaqa.xlsx file.", vbCritical
+        GoTo Chiqish
+    End If
+
     For g = 1 To groupCount
 
         memberCount = 0
@@ -199,8 +209,9 @@ Sub Shablonlarni_Avtomatik_Yaratish()
             End If
         Next i
 
-        ' Shablon varag'idan yangi ish kitobi yaratish
-        wbTemplate.Worksheets(1).Copy
+        ' Faqat hujjat raqami, sana, STIR va boshqa kerakli ustunlari bor
+        ' aylanma varaqa nusxalanadi. Shablondagi boshqa varaqlar o'zgarmaydi.
+        wsTemplate.Copy
         Set wbNew = ActiveWorkbook
         Set wsNew = wbNew.Worksheets(1)
 
@@ -221,7 +232,7 @@ Sub Shablonlarni_Avtomatik_Yaratish()
                 wsNew.Rows(insertAt).PasteSpecial Paste:=-4122 ' -4122 = xlPasteFormats
                 Application.CutCopyMode = False
                 wsNew.Rows(insertAt).RowHeight = wsNew.Rows(ROW_BASE + 1).RowHeight
-                ' "Изоҳ" ustunidagi tayyor matn/formulani ham nusxalab qo'yamiz
+                ' "????" ustunidagi tayyor matn/formulani ham nusxalab qo'yamiz
                 wsNew.Cells(insertAt, "J").Value = wsNew.Cells(ROW_BASE + 1, "J").Value
                 insertAt = insertAt + 1
             Next k
@@ -230,18 +241,21 @@ Sub Shablonlarni_Avtomatik_Yaratish()
         ' Ma'lumotlarni shablonga yozish
         For k = 1 To memberCount
             i = members(k)
-            wsNew.Cells(ROW_BASE + k - 1, "A").Value = k                     ' Т/р
-            wsNew.Cells(ROW_BASE + k - 1, "B").Value = arrHujjatRaqami(i)    ' Хужжат рақами
-            wsNew.Cells(ROW_BASE + k - 1, "C").Value = arrHujjatSanasi(i)    ' Хужжат санаси
-            wsNew.Cells(ROW_BASE + k - 1, "D").Value = arrStir(i)            ' СТИР
-            wsNew.Cells(ROW_BASE + k - 1, "E").Value = arrKadastr(i)         ' Кадастр коди
-            wsNew.Cells(ROW_BASE + k - 1, "F").Value = arrKorxona(i)         ' Корхона номи
-            wsNew.Cells(ROW_BASE + k - 1, "G").Value = arrSoliqKodi(i)       ' солиқ коди
-            wsNew.Cells(ROW_BASE + k - 1, "H").Value = arrOrtiqcha(i)        ' солиқ суммаси
-            wsNew.Cells(ROW_BASE + k - 1, "I").Value = arrQaytariladigan(i)  ' Қайтарилаётган сумма
+            wsNew.Cells(ROW_BASE + k - 1, "A").Value = k                     ' ?/?
+            wsNew.Cells(ROW_BASE + k - 1, "B").NumberFormat = "@"
+            wsNew.Cells(ROW_BASE + k - 1, "B").Value = arrHujjatRaqami(i)    ' ?????? ?????? (-26 bilan)
+            wsNew.Cells(ROW_BASE + k - 1, "C").Value = arrHujjatSanasi(i)    ' ?????? ??????
+            wsNew.Cells(ROW_BASE + k - 1, "D").Value = arrStir(i)            ' ????
+            wsNew.Cells(ROW_BASE + k - 1, "E").Value = arrKadastr(i)         ' ??????? ????
+            wsNew.Cells(ROW_BASE + k - 1, "F").Value = arrKorxona(i)         ' ??????? ????
+            wsNew.Cells(ROW_BASE + k - 1, "G").Value = arrSoliqKodi(i)       ' ????? ????
+            wsNew.Cells(ROW_BASE + k - 1, "H").NumberFormat = "#,##0"
+            wsNew.Cells(ROW_BASE + k - 1, "H").Value = arrOrtiqcha(i)        ' ????? ???????
+            wsNew.Cells(ROW_BASE + k - 1, "I").NumberFormat = "#,##0"
+            wsNew.Cells(ROW_BASE + k - 1, "I").Value = arrQaytariladigan(i)  ' ?????????????? ?????
         Next k
 
-        ' --- Fayl nomi: КОРХОНА-СТИР (birinchi yozuv asosida) ---
+        ' --- Fayl nomi: ???????-???? (birinchi yozuv asosida) ---
         i = members(1)
         fileName = arrKorxona(i) & "-" & arrStir(i)
         fileName = CleanFileName(fileName)
@@ -252,7 +266,7 @@ Sub Shablonlarni_Avtomatik_Yaratish()
             fullPath = outputFolder & Application.PathSeparator & fileName & "_" & g & ".xlsx"
         End If
 
-        wbNew.SaveAs Filename:=fullPath, FileFormat:=51 ' 51 = xlOpenXMLWorkbook (.xlsx)
+        wbNew.SaveAs fileName:=fullPath, FileFormat:=51 ' 51 = xlOpenXMLWorkbook (.xlsx)
         wbNew.Close SaveChanges:=False
 
     Next g
@@ -277,6 +291,36 @@ Chiqish:
     Application.DisplayAlerts = True
 
 End Sub
+
+
+' Hujjat raqamini matn sifatida saqlaydi va oxirida faqat bir marta -26 qo'shadi.
+' Masalan: 7257108 -> 7257108-26; 7257108-26 -> 7257108-26.
+Function HujjatRaqaminiTayyorla(ByVal v As Variant) As String
+    Dim s As String
+
+    If IsNumeric(v) Then
+        s = Format$(CDbl(v), "0")
+    Else
+        s = Trim$(CStr(v))
+    End If
+
+    If s <> "" Then
+        If Right$(s, 3) <> "-26" Then s = s & "-26"
+    End If
+
+    HujjatRaqaminiTayyorla = s
+End Function
+
+
+' Musbat summani doim yuqoriga, butun songa yaxlitlaydi.
+' Masalan: 758986.36 -> 758987; 758986 -> 758986.
+Function YuqorigaYahlitla(ByVal summa As Double) As Double
+    If summa > Fix(summa) Then
+        YuqorigaYahlitla = Fix(summa) + 1
+    Else
+        YuqorigaYahlitla = Fix(summa)
+    End If
+End Function
 
 
 ' Excel/LibreOffice fayllarida "45 409,64" kabi probel+vergul formatidagi
@@ -314,3 +358,5 @@ Function CleanFileName(ByVal txt As String) As String
 
     CleanFileName = Trim(txt)
 End Function
+
+
